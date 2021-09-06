@@ -9,182 +9,160 @@ addConstants <- function(pars, names, values){
   return(pars)
 }
 
-generalTransf <- function(pars, data){
-  for (name in names(transFunc)){
-    transfPar <- transFunc[[name]]
-    prePars <- pars[grep(transfPar[[2]], substr(names(pars),1, nchar(transfPar[[2]])), fixed = F)]
-    newPars <- transfPar[[1]](pars[name], prePars)
-    if(length(transfPar) > 2){
-      if(transfPar[[3]]) names(newPars) <- gsub(transfPar[[2]], name, names(newPars))
+driftsMSIT <- function(pars, data){
+  for(i in 1:3){
+    FlIdx <- data[,'flank'] == i
+    SimIdx <- data[,'pos'] == i #Simon effect
+    MatchIdx <- data[,'uniq'] == i
+    pars[FlIdx,i,'v'] <- pars[FlIdx,i,'v'] + pars[1,1,'vFlank']
+    pars[SimIdx,i,'v'] <- pars[SimIdx,i,'v'] + pars[1,1,'vSimon']
+    for(j in 1:3){
+      # We are currently in accumulator i, and we want to give the targets in accumulator i an extra bump based on position
+      # So we loop over the three positions, and find for which values, the position == j and give a bump based on that idx
+      PosIdx <- data[,'pos'] == j
+      pars[MatchIdx & PosIdx,i,'v'] <- pars[MatchIdx & PosIdx,i, 'v'] + pars[1,1,paste0('vPos.', j)]
     }
-    pars <- c(pars[!names(pars) %in% c(names(newPars), name)], newPars)
+    
   }
-}
-
-
-competingTransf <- function(pars, ...){
-  sPars <- pars[grep("s_", names(pars), fixed = F)]
-  piPars <- pars[grep("pi_", names(pars), fixed = F)]
-  piPars <- pnorm(piPars)
-  v1Pars <- sPars*(1-piPars)
-  v2Pars <- sPars*piPars
-  names(v1Pars) <- paste("v_1_", gsub("^[^_]*_", "", names(piPars)), sep = "")
-  names(v2Pars) <- paste("v_2_", gsub("^[^_]*_", "", names(piPars)), sep = "")
-  pars <- pars[!grepl("s_", names(pars)) & !grepl("pi_", names(pars))]
-  pars <- c(pars, v1Pars, v2Pars)
+  pars[,2,'B'] <- pars[1,1,'B2']
   return(pars)
 }
 
-driftsRePar2 <- function(pars, ...){
-  V0Pars <- pars[grep("V0_", names(pars), fixed = F)]
-  diffPars <- pars[grep("diff_", names(pars), fixed = F)]
-  diffPlusPars <- pars[grep("diffPlus_", names(pars), fixed = F)]
-  if(!is.null(diffPars)){
-    v1Pars <- V0Pars - diffPars/2
-    v2Pars <- V0Pars + diffPars/2
-  }
-  if(!is.null(diffPlusPars)){
-    v1ParsNew <- numeric()
-    v2ParsNew <- numeric()
-    i <- 0
-    baseDiffPlusPars <- gsub("[.].*", "", names(diffPlusPars))
-    for (basePar in baseDiffPlusPars){
-      curPars <- pars[grep(basePar, names(pars), fixed = F)]
-      for (par in curPars){
-        i <- i + 1
-        tmp1 <- v1Pars - par/2
-        names(tmp1) <- paste(names(tmp1), "_", gsub("^[^_]*_", "", names(curPars)[i]), sep = "")
-        tmp2 <- v2Pars + par/2 
-        names(tmp2) <- paste(names(tmp2), "_", gsub("^[^_]*_", "", names(curPars)[i]), sep = "")
-        v1ParsNew <- c(v1ParsNew, tmp1)
-        v2ParsNew <- c(v2ParsNew, tmp2)
-      }
+driftsMSIT2 <- function(pars, data){
+  for(i in 1:3){
+    FlIdx <- data[,'flank'] == i
+    SimIdx <- data[,'pos'] == i #Simon effect
+    pars[FlIdx,i,'v'] <- pars[FlIdx,i,'v'] + pars[1,1,'vFlank']
+    pars[SimIdx,i,'v'] <- pars[SimIdx,i,'v'] + pars[1,1,'vSimon']
+    for(j in 1:3){
+      # We are currently in accumulator i, and we want to give the targets in accumulator i an extra bump based on position
+      # So we loop over the three positions, and find for which values, the position == j and give a bump based on that idx
+      PosIdx <- data[,'pos'] == j
+      #The bump is scaled by the number of stimuli that are presented with (1 + nScale)^(nStims - 1)
+      posBoost <- pars[1,1,paste0('vPos.', j)]*((1 + pars[1,1,'nScale'])^(data[PosIdx,'nstims'] - 1))
+      #Every stim gets the boost, based on numerical distance with exponential decay: distScale^numDist
+      distScale <- (pars[1,1,'distScale']^(abs(data[PosIdx,'uniq']) - i))
+      pars[PosIdx,i,'v'] <- pars[PosIdx,i, 'v'] + (pars[1,1,'vMatch'] + posBoost) * distScale
     }
   }
+  return(pars)
+}
+
+driftsMSIT3 <- function(pars, data){
+  for(i in 1:3){
+    FlIdx <- data[,'flank'] == i
+    PosIdx <- data[,'pos'] == i #Simon effect
+    MatchIdx <- data[,'uniq'] == i
+    pars[FlIdx,i,'Qs'] <- pars[FlIdx,i,'Qs'] + pars[1,1,'QFlank']
+    pars[PosIdx,i,'Qs'] <- pars[PosIdx,i,'Qs'] + pars[1,1,'QSimon']
+    pars[MatchIdx, i, 'Qs'] <- pars[MatchIdx, i, 'Qs'] + pars[1,1,'QMatch']
+    #distScale <- (pars[1,1,'distScale']^(abs(data[,'uniq']) - i))
+    #pars[,i,'Qs'] <- pars[,i,'Qs'] + (pars[1,1,'QMatch']) * distScale
+    #pars[PosIdx,,'wD'] <- pars[PosIdx,,'wD'] + pars[1,1,paste0('wDPos.', i)]*((1 + pars[1,1,'nScale'])^(data[PosIdx,'nstims'] - 1))
+  }
+  return(pars)
 }
 
 
 driftsRePar <- function(pars, ...){
-  V0Pars <- pars[grep("V0_", names(pars), fixed = F)]
+  v1Pars <- pars[grep("V0_", names(pars), fixed = F)]
+  v2Pars <- v1Pars
   diffPars <- pars[grep("diff_", names(pars), fixed = F)]
-  diffPlusPars <- pars[grep("diffPlus_", names(pars), fixed = F)]
-  if(!is.null(diffPars)){
-    v1Pars <- V0Pars - diffPars/2
-    v2Pars <- V0Pars + diffPars/2
+  # diffPlusPars <- pars[grep("diffPlus_", names(pars), fixed = F)]
+  if(length(diffPars) > 0){
+    v1Pars <- v1Pars - diffPars/2
+    v2Pars <- v2Pars + diffPars/2
   }
-  names(v1Pars) <- paste("v_1_", gsub("^[^_]*_", "", names(V0Pars)), sep = "")
-  names(v2Pars) <- paste("v_2_", gsub("^[^_]*_", "", names(V0Pars)), sep = "")
-  if(!is.null(diffPlusPars)){
-    v1ParsNew <- numeric()
-    v2ParsNew <- numeric()
-    i <- 0
-    for(diffPlusPar in diffPlusPars){
-      i <- i + 1
-      tmp1 <- v1Pars - diffPlusPar/2
-      names(tmp1) <- paste(names(tmp1), "_", gsub("^[^_]*_", "", names(diffPlusPars)[i]), sep = "")
-      tmp2 <- v2Pars + diffPlusPar/2 
-      names(tmp2) <- paste(names(tmp2), "_", gsub("^[^_]*_", "", names(diffPlusPars)[i]), sep = "")
-      v1ParsNew <- c(v1ParsNew, tmp1)
-      v2ParsNew <- c(v2ParsNew, tmp2)
-    }
-    v1Pars <- v1ParsNew
-    v2Pars <- v2ParsNew
-  }
-
+  names(v1Pars) <- paste("v_1_", gsub("^[^_]*_", "", names(v1Pars)), sep = "")
+  names(v2Pars) <- paste("v_2_", gsub("^[^_]*_", "", names(v2Pars)), sep = "")
   pars <- pars[!grepl("V0_", names(pars)) & !grepl("diff_", names(pars)) & !grepl("diffPlus_", names(pars))]
   pars <- c(pars, v1Pars, v2Pars)
 }
 
-
 prepPars <- function(pars, data){
   #This is where the magic happens
-
-  transFunc <- attr(data, "transFunc")
-  RL <- attr(data, "RL")
-  constants <- attr(data, "constants")
-  match <- attr(data, "match")
-  matchedPars <- names(match) #get the pars that are different for e.g. response coded 
-  n_v <- attr(data, "n_v")
   
-  if(RL) transFunc <- c(transform.RL, F)
+  settings <- attr(data, 'settings')
+  transFunc <- settings$transFunc
+  RL <- settings$RL
+  constants <- settings$constants
+  match <- settings$match
+  matchedPars <- names(match) #get the pars that are different for e.g. response coded 
+  n_v <- settings$n_v
+  
   if(!is.null(transFunc)){
-    if(transFunc[[2]]) pars <- transFunc[[1]](pars, data)
+    if(transFunc$earlyTransform) pars <- transFunc$func(pars, data)
   }
   # Find all pars that are varying between conditions
   varyPars <- pars[grep("[_]", names(pars), fixed = F)]
   pars <- pars[!names(pars) %in% names(varyPars)]
-  
-
-  
-  # Get the common parameters among the varying pars so that we can create an array using these and the standard parameters. 
-  tmp <- unique(gsub("*_.*", "", names(varyPars))) #e.g. V0.SPD & V0.ACC -> V0 as common parameter
-  pars <- addConstants(pars, tmp, rep(NA, length(tmp)))
-  if(!"v" %in% names(pars)) pars <- addConstants(pars, "v", NA) #Done for the RL advantage framework, makes sure there's a drift rate to fill.
-  
   pars <- addConstants(pars, names(constants), sapply(constants, FUN = function(x) x))
+  # Get the common parameters among the varying pars so that we can create an array using these and the standard parameters. 
+  commonPars <- unique(gsub("*_.*", "", names(varyPars))) #e.g. V0.SPD & V0.ACC -> V0 as common parameter
+  pars <- addConstants(pars, commonPars, rep(NA, length(commonPars)))
+
   # Create an array with dimensions c(Available responses, ntrials, npars)
-  pars <- array(rep(pars, each = nrow(data)*n_v), dim = c(n_v, nrow(data), length(pars)), dimnames = list(NULL, NULL, names(pars)))
+  pars <- array(rep(pars, each = nrow(data)*n_v), dim = c(nrow(data),n_v, length(pars)), dimnames = list(NULL, NULL, names(pars)))
   
   # For all the parameters varying between condition, of which their base parameter was added to the array as NA,
   # Fill in the NAs with the actual parameter values
   # Varying pars should be denoted with a <basePar>_<factor>.<level>_<factor.<level> format.
   # Or if part of the coding <basePar>_<accumulatorNr>_<factor>.<level>_<factor.<level> format.
   for (par in names(varyPars)){
-    idx <- 1
-    tmp1 <- strsplit(par, "_")[[1]] 
-    basePar <- tmp1[1]
+    parSplit <- strsplit(par, "_")[[1]] 
+    basePar <- parSplit[1]
     #Check if we are modifying a parameter we have multiple accumulators per response or not.
     if(basePar %in% matchedPars){
       #remove base par and it's equivalent accumulator from the list
-      parN <- as.integer(tmp1[2]) #e.g. response code 1 = wrong 2 = correct. 
-      factorPars <- tmp1[c(-1,-2)] #remaining are the factor(s) in format <factor>.<level>
+      parN <- as.integer(parSplit[2]) #e.g. response code 1 = wrong 2 = correct. 
+      factorPars <- parSplit[-c(1,2)] #remaining are the factor(s) in format <factor>.<level>
       idx <- which(basePar == matchedPars) #We need to know which matched parameter we're talking about
     } else {
+      idx <- 1
       #Not a parameter involved in match map
-      factorPars <- tmp1[-1] #remaining are the factor(s) in format <factor>.<level>
+      factorPars <- parSplit[-1] #remaining are the factor(s) in format <factor>.<level>
     }
-
-
+    
+    
     criterion <- list()
     parCoded <- F #Keep score of whether the current parameter is spread over accumulators or row dependent.
     for(factorPar in factorPars){
-      tmp2 <- strsplit(factorPar, "[.]")[[1]]
-      if(tmp2[1] == match[[idx]][1]){ #the current factor is spread over accumulators not on trial-dependent level. 
-        currentAcc <- as.integer(tmp2[2]) #select current accumulator
+      factorSplit <- strsplit(factorPar, "[.]")[[1]]
+      if(factorSplit[1] == match[[idx]][1]){ #the current factor is spread over accumulators not on trial-dependent level. 
+        currentAcc <- factorSplit[2] #select current accumulator
         parCoded <- T #Remember that this parameter is (partially) spread over accumulators. 
       } else{ #Find matching values based on trial(row)-dependent factors
-        criterion[[factorPar]] <- which(data[,tmp2[1]] == tmp2[2])
+        criterion[[factorPar]] <- which(data[,factorSplit[1]] == factorSplit[2])
         if(!parCoded) currentAcc <- 1:n_v #Not a accumulator dependent factor, select all. 
       }
     }
     criterion <- Reduce(intersect, criterion) #calculate for which rows we should replace considering all relevant factors
     if(basePar %in% matchedPars & !is.na(match[[idx]][2])){ #For this parameter the values are determined on the match map e.g. response correctness.
       for(currentAcc in 1:n_v){ #Loop over different accumulators and find when it matches the specified match mapping. 
-        if(parN == 2) #If e.g v_2 this means drift rate for correct. v_1 is drift rate for incorrect. 
+        if(parN == 2) #If e.g v_2 this means drift rate for correct. v_1 is drift rate for incorrect (based on DDM convention) 
           respCrit <- which(currentAcc == data[,match[[idx]][2]]) #See for which values the currentAccumulator meets the predefined correct map. 
         else{
           respCrit <- which(currentAcc != data[,match[[idx]][2]])
         }
         #update criterion (whilst storing old criterion for other accumulators.)
         if(!is.null(criterion)) respCrit <- intersect(respCrit, criterion)
-        pars[currentAcc,respCrit,basePar] <- varyPars[par]
+        pars[respCrit,currentAcc,basePar] <- varyPars[par]
       }
     } else{
       if(basePar %in% matchedPars & is.na(match[[idx]][2])){
-        #In this case the 
+        #In this case there's no response coding, just accuracy coding
         currentAcc <- parN  
-        criterion <- 1:ncol(pars)
+        if(is.null(criterion)) criterion <- 1:nrow(pars) #no criteria, fill in whole column
       }
-      pars[currentAcc,criterion,basePar] <- varyPars[par]
+      pars[criterion,currentAcc,basePar] <- varyPars[par]
     }
   }
   #Do some transformations
   pars[,,'t0'] <- pnorm(pars[,,'t0'])
-  pars[,,'t0'][pars[,,'t0'] < -5] <- 100 #This is a bit cheating, but makes it so that t0s don't approach minus infinity get a low likelihood
   if(!is.null(transFunc)){
-    if(!transFunc[[2]]) pars <- transFunc[[1]](pars, data)
+    if(!transFunc$earlyTransform) pars <- transFunc$func(pars, data)
   }
-
+  
   return(pars)
 }
 
@@ -194,14 +172,14 @@ transform.RL <- function(pars, data) {
   pars[,,'aV'] <- pnorm(pars[,,'aV'])
   cvs <- attr(data,"cvs")[[as.character(sub)]]
   choiceIdx <- attr(data, "VVchoiceIdx")[[as.character(sub)]]
-
+  
   ### SM
   
   # Create start point vector
-  startValues <- rep(pars[1,,'SR'], each=2, times=ncol(cvs))
+  startValues <- rep(pars[,1,'Qs'], each=2, times=ncol(cvs))
   
   # learning rates matrix
-  learningRates <- matrix(rep(pars[1,,'aV'], each=ncol(cvs)), ncol=ncol(cvs), byrow=TRUE)
+  learningRates <- matrix(rep(pars[,1,'aV'], each=ncol(cvs)), ncol=ncol(cvs), byrow=TRUE)
   
   # call C
   updated <- adapt.c.dmc(startValues = startValues, 
@@ -210,14 +188,12 @@ transform.RL <- function(pars, data) {
                          learningRule='SARSA')
   
   # add back data to 'pars' array
-  pars[,,'SR'] <- matrix(updated$adaptedValues[choiceIdx], ncol=2, byrow=FALSE)
-  
-  pars[,,'v'] <- t(cbind(pars[1,,"V0"] + pars[1,,"wD"]*(pars[2,,"SR"]-pars[1,,"SR"]) + pars[1,,'wS'] * (pars[2,,"SR"]+pars[1,,"SR"]),
-                  pars[2,,"V0"] + pars[2,,"wD"]*(pars[1,,"SR"]-pars[2,,"SR"]) + pars[2,,'wS'] * (pars[2,,"SR"]+pars[1,,"SR"])))
-  
-  
+  pars[,,'Qs'] <- matrix(updated$adaptedValues[choiceIdx], ncol=2, byrow=T)[,c(2,1)]
+  #Note that this returns them in the format Qvalue 1 is correct response, Qvalue 2 is incorrect response. 
+  #So we switch them around in the next line to match DDM convention (which we keep throughout the rest of the code)
   return(pars)
 }
+
 
 
 likelihood.RD <- function(pars,data,min.like=1e-10, sample = F)   
@@ -226,82 +202,43 @@ likelihood.RD <- function(pars,data,min.like=1e-10, sample = F)
   facs <- colnames(data)[-which(colnames(data) %in% c("subject", "RT", "R"))]
   
   pars <- prepPars(pars, data)
-
+  
   if (sample){
     #We're interested in posterior prediction, instead of fitting
     n = nrow(data)
-    out <- rWaldRaceSM(n=n, 
-                       A=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'A'])),
-                       v=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'v'])),
-                       B=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'B'])),
-                       t0=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'t0'])),
-                       st0= 0,
-                       s=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'s'])),
-                       silent=TRUE, simPerTrial=FALSE)
-    
+    out <- rWaldRace(n=n, A=pars[,,'A'], v=pars[,,'v'], B=pars[,,'B'], t0=pars[,,'t0'], s=pars[,,'s'])
     out <- cbind(out, data[,facs])
     colnames(out)[-c(1,2)] <- facs
     return(out)
   } else{
     #Get the likelihoods for the sampler
     return(sum(log(pmax(dWaldRace(rt=data$RT, response=data$R,
-                           A=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'A'])),
-                           v=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'v'])),
-                           B=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'B'])),
-                           t0=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'t0'])),
-                           st0= 0,
-                           s=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'s'])),
-                           silent=TRUE), min.like, na.rm=TRUE))))
+                                  A=pars[,,'A'], v=pars[,,'v'], B=pars[,,'B'], t0=pars[,,'t0'], st0= 0, s=pars[,,'s'],
+                                  silent=TRUE), min.like, na.rm=TRUE))))
   }
 }
 
-
-likelihood.TRD <- function(pars,data,min.like=1e-10, sample = F)
+likelihood.ARD <- function(pars,data,min.like=1e-10, sample = F)   
 {
   
   facs <- colnames(data)[-which(colnames(data) %in% c("subject", "RT", "R"))]
   
   pars <- prepPars(pars, data)
   
-  print(dimnames(pars))
   if (sample){
     #We're interested in posterior prediction, instead of fitting
     n = nrow(data)
-    out <- rWaldRace_Timing_NS(n=n, 
-                       A=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'A'])),
-                       v_E =lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'v'])),
-                       B_E =lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'B'])),
-                       t0E = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'t0'])),
-                       st0= 0,
-                       s_E =lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'s'])),
-                       v_T = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'vT'])),
-                       s_T = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'sT'])),
-                       B_T = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'BT'])),
-                       t0T=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'t0T'])),
-                       silent=TRUE, simPerTrial=FALSE)
+    out <- rARD(n=n, A=pars[,,'A'], V0=pars[,,'V0'], B=pars[,,'B'], t0=pars[,,'t0'], s=pars[,,'s'],
+                       wS = pars[,,'wS'], wD = pars[,,'wD'], Qs = pars[,,'Qs'])
     
     out <- cbind(out, data[,facs])
-    colnames(out)[-c(1:3)] <- facs
+    colnames(out)[-c(1,2)] <- facs
     return(out)
   } else{
     #Get the likelihoods for the sampler
-    return(sum(log(pmax(dWaldRaceTiming(rt=data$RT, response=data$R,
-                                  A=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'A'])),
-                                  v=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'v'])),
-                                  B=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'B'])),
-                                  t0=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'t0'])),
-                                  st0= 0,
-                                  s=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'s'])),
-                                  v_T = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'vT'])),
-                                  s_T = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'sT'])),
-                                  B_T = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'BT'])),
-                                  A_T = lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'AT'])),
-                                  t0T=lapply(1:nrow(pars), FUN = function(x) return(pars[x,,'t0T'])),
+    return(sum(log(pmax(dARD(rt=data$RT, response=data$R,
+                                  A=pars[,,'A'], V0=pars[,,'V0'], B=pars[,,'B'], t0=pars[,,'t0'], st0= 0, s=pars[,,'s'],
+                                  wS = pars[,,'wS'], wD = pars[,,'wD'], Qs = pars[,,'Qs'],
                                   silent=TRUE), min.like, na.rm=TRUE))))
   }
 }
-
-
-
-
-

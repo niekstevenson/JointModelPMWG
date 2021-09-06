@@ -1,51 +1,4 @@
-
 library(SuppDists)
-
-check_n1_arguments <- function(arg, nn, n_v, dots = FALSE) {
-  mc <- match.call()
-  varname <- sub("dots$", "", deparse(mc[["arg"]]), fixed = TRUE)
-  if (!is.list(arg)) {
-    if ((!is.vector(arg, "numeric")) || (length(arg) < 1))
-      stop(paste(varname, "needs to be a numeric vector of length >= 1!"))
-    if (dots) {
-      arg <- as.list(arg)
-      arg <- lapply(arg, rep, length.out=nn)
-    } else arg <- rep(arg, length.out=nn)
-  } else {
-    if (!dots && (length(arg) != n_v))
-      stop(paste("if", varname, "is a list, its length needs to correspond to the number of accumulators."))
-    for (i in seq_along(arg)) {
-      if ((!is.vector(arg[[i]], "numeric")) || (length(arg[[i]]) < 1))
-        stop(paste0(varname, "[[", i, "]] needs to be a numeric vector of length >= 1!"))
-      arg[[i]] <- rep(arg[[i]], length.out=nn)
-    }
-  }
-  return(unname(arg))
-}
-
-check_i_arguments <- function(arg, nn, n_v, dots = FALSE) {
-  mc <- match.call()
-  varname <- sub("dots$", "", deparse(mc[["arg"]]), fixed = TRUE)
-  if (!is.list(arg)) {
-    if ((!is.vector(arg, "numeric")) || (length(arg) < 1))
-      stop(paste(varname, "needs to be a numeric vector of length >= 1!"))
-    if (dots) {
-      arg <- as.list(arg)
-      arg <- lapply(arg, rep, length.out=nn)
-    } else arg <- lapply(seq_len(n_v), function(x) rep(arg, length.out=nn))
-  } else {
-    if (!dots && (length(arg) != n_v))
-      stop(paste("if", varname, "is a list, its length needs to correspond to the number of accumulators."))
-    for (i in seq_along(arg)) {
-      if ((!is.vector(arg[[i]], "numeric")) || (length(arg[[i]]) < 1))
-        stop(paste0(varname, "[[", i, "]] needs to be a numeric vector of length >= 1!"))
-      arg[[i]] <- rep(arg[[i]], length.out=nn)
-    }
-  }
-  #if (length(arg) != n_v) stop(paste("size of", varname, "does not correspond to number of accumulators."))
-  return(arg)
-}
-
 
 rWald <- function(n,B,v,A,s=1)
   # random function for single acumulator
@@ -211,51 +164,6 @@ dWald <- function(t,v,B,A,s=1,useSuppDists=TRUE)
   out
 }
 
-rWaldRaceSM <- function(n, A, B, t0, v, s, st0 = 0, silent = FALSE, args.dist=NULL, simPerTrial=FALSE)
-{
-  if(is.list(v)) {
-    v <- matrix(unlist(v), ncol=length(v))
-    if(nrow(v) != n & !silent) warning('Number of trials does not equal number of per-trial drift rates...')
-    if(length(B) == 1) {
-      B <- rep(B, n)
-    }
-    if(length(s) == 1) {
-      s <- rep(s, n)
-    }
-    out <- data.frame(RT=NA, R=NA)
-    if(simPerTrial) {
-      for(i in 1:nrow(v)) {
-        out[i,] <- rWaldRace(n=n, v=v[i,], B=B[i], A=A, t0=t0, s=s)
-      }    
-    } else {
-      if(is.list(B)) B <- matrix(unlist(B), ncol=length(B))
-      if(is.list(A)) A <- matrix(unlist(A), ncol=length(A))
-      if(is.list(t0)) t0 <- matrix(unlist(t0), ncol=length(t0))
-      if(is.list(s)) s <- matrix(unlist(s), ncol=length(s))
-      B[B<0] <- 0 # Protection for negatives
-      A[A<0] <- 0
-      bs <- B + runif(length(B), 0, A)
-      n_v  <- ifelse(is.null(dim(v)), length(v), dim(v)[2])
-      n <- nrow(v)
-      ttf <- matrix(NA, nrow=ncol(v), ncol=nrow(v))
-      v[v < 1e-5] <- 1e-5
-      for(i in 1:n_v) {
-        ttf[i,] <- rinvGauss(n, nu=bs[,i]/v[,i], lambda=(bs[,i]/s[,i])^2)
-      }
-      if(any(ttf < 0)) browser()
-      ttf <- ttf + t(t0)
-      resp <- apply(ttf, 2, which.min)
-      out <- data.frame(RT = ttf[cbind(resp,1:n)], R = apply(ttf, 2, which.min))
-    }
-    
-  } else {
-    # all equal drifts, nice and fast
-    out <- rWaldRace(n=n, v=v, B=B, A=A, t0=t0, s=s)
-  }
-  out
-}
-
-
 pWald <- function(t,v,B,A,s=1)
   # cumulative density for single accumulator
 {
@@ -361,107 +269,52 @@ pWald <- function(t,v,B,A,s=1)
   
 }
 
-rWaldRace <- function(n,v,B,A,t0,s,gf=0,return.ttf=FALSE)
+rWaldRace <- function(n,v,B,A,t0,s)
   # random function for Wald race.
 {
   B[B<0] <- 0 # Protection for negatives
   A[A<0] <- 0
-  n_v  <- ifelse(is.null(dim(v)), length(v), dim(v)[1])
-  ttf <- matrix(t0 + rWald(n*n_v,B=B,v=v,A=A,s=s), nrow=n_v)
-  if (return.ttf) return(ttf)
+  v[v < 1e-5] <- 1e-5
+  bs <- B + runif(length(B), 0, A)
+  n_v  <- ncol(v)
+  ttf <- matrix(NA, nrow=ncol(v), ncol=nrow(v))
+  for(i in 1:n_v) {
+    ttf[i,] <- rinvGauss(n, nu=bs[,i]/v[,i], lambda=(bs[,i]/s[,i])^2)
+  }
+  ttf <- ttf + t(t0)
   resp <- apply(ttf, 2, which.min)
   out <- data.frame(RT = ttf[cbind(resp,1:n)], R = apply(ttf, 2, which.min))
-  
-  if (gf[1] > 0) {
-    is.gf <- as.logical(rbinom(dim(out)[1],1,gf))
-    out$RT[is.gf] <- NA
-    out$R[is.gf] <- 1
-  }
-  
-  out
+  return(out)
 }
 
-n1Wald <- function(dt,B,A,t0,gf=0, ...)
+n1Wald <- function(dt,B,A,t0,s, v, n_v)
   # Generates defective PDF for responses on node=1, dt (decison time) is a vector of times
 {
-  ### Added by SM, dots carries s and v
-  # First check some stuff
-  dots <- list(...)
-  n_v <- max(vapply(dots, length, 0))  # Number of responses
-  if (n_v < 2) stop("There need to be at least two accumulators/drift rates.")
-  nn <- length(dt) #dt is decision times
-  B <- check_n1_arguments(B, nn=nn, n_v=n_v)
-  A <- check_n1_arguments(A, nn=nn, n_v=n_v)
-  t0 <- check_n1_arguments(t0, nn=nn, n_v=n_v)
-  v <- check_n1_arguments(dots[[1]], nn=nn, n_v=n_v)
-  s <- check_n1_arguments(dots[[2]], nn=nn, n_v=n_v)
-  
-  if (is.null(dim(dt))) dt <- matrix(rep(dt, each=n_v), nrow=n_v)
-  dt <- dt-t0[[1]]  ## assume single t0
-  
-  is.go <- !is.na(dt[1,])
-  n.go <- sum(is.go)
-  if (!is.matrix(v)) v <- do.call(rbind, v) #matrix(unlist(v), nrow=n_v)
-  if (!is.matrix(A)) A <- do.call(rbind, A) # matrix(unlist(A), nrow=n_v)
-  if (!is.matrix(B)) B <- do.call(rbind, B) #matrix(unlist(B), nrow=n_v)
-  if (!is.matrix(s)) s <- do.call(rbind, s)
-
+  dt <- dt-t0[,1]  ## assume single t0
   # This makes sure that the Density function is multiplied by the cumulative density function of the other accumululators to get a
-  # Defective density function. 
-  dt[1,is.go] <- (1-gf[1]) * dWald(dt[1,is.go], A=A[1,], v=v[1,], B=B[1,], s=s[1,]) #gf = 0
+  # Defective density function.
+  pdf <- dWald(dt, A=A[,1], v=v[,1], B=B[,1], s=s[,1])
   if (n_v > 1) for (i in 2:n_v)
-    dt[1, is.go] <- dt[1,is.go] * (1-pWald (dt[i,is.go], A=A[i,], v=v[i,], B=B[i,], s=s[i,]))
-  
-  dt[1, !is.go] <- gf[1] # can ignore this, for go-failures. 
-  
-  dt[1,]
+    pdf <- pdf * (1-pWald (dt, A=A[,i], v=v[,i], B=B[,i], s=s[,i]))
+  return(pdf)
 }
 
-dWaldRace <- function(rt, response, A, B, t0, ..., st0 = 0, args.dist = list(), silent = FALSE)
+dWaldRace <- function(rt, response, A, B, t0, s, v, st0 = 0, silent = FALSE)
 {
-  dots <- list(...)
-  if (is.null(names(dots)))
-    stop("... arguments need to be named.")
-  if (is.data.frame(rt)) {
-    response <- rt$response
-    rt <- rt$rt
-  }
   response <- as.numeric(response)
-  nn <- length(rt)
-  n_v <- max(vapply(dots, length, 0))
-  if (!silent)
-    message(paste("Results based on", n_v, "accumulators/drift rates."))
-  if (!is.numeric(response) || max(response) > n_v)
-    stop("response needs to be a numeric vector of integers up to number of accumulators.")
-  if (any(response < 1))
-    stop("the first response/accumulator must have value 1.")
-  if (n_v < 2)
-    stop("There need to be at least two accumulators/drift rates.")
-  #  distribution <- match.arg(distribution)
-  response <- rep(response, length.out = nn)
-  A <- check_i_arguments(A, nn = nn, n_v = n_v)
-  B <- check_i_arguments(B, nn = nn, n_v = n_v)
-  t0 <- check_i_arguments(t0, nn = nn, n_v = n_v)
-  dots$v <- check_i_arguments(dots$v, nn = nn,
-                              n_v = n_v, dots = TRUE)
-  dots$s <- check_i_arguments(dots$s, nn=nn, n_v=n_v, dots=TRUE)
-  
-  for (i in seq_len(length(dots))) {
-    if (length(dots[[i]]) < n_v) 
-      dots[[i]] <- rep(dots[[i]], length.out = n_v)
-  }
-  out <- vector("numeric", nn)
+  n_v <- ncol(v)
+  out <- vector("numeric", length(rt))
   for (i in unique(response)) {
-    sel <- response == i #make sure that only matrix entries belonging to this specific response are selected. 
+    sel <- response == i #make sure that only matrix entries belonging to this specific response are selected.
     #Reorders the responses in such a fashion that the current response is the first entry and the other response is the second
-    #This reordering is done for both the first and the second response.
-    out[sel] <- do.call(n1Wald, args = c(dt = list(rt[sel]),
-                                         A = list(lapply(A, '[', i=sel)[c(i, seq_len(n_v)[-i])]),
-                                         B = list(lapply(B, '[', i=sel)[c(i, seq_len(n_v)[-i])]),
-                                         t0 = list(lapply(t0, '[', i=sel)[c(i, seq_len(n_v)[-i])]),
-                                         gf=0,
-                                         lapply(dots, function(x) lapply(x, "[", i = sel)[c(i, 
-                                                                                            seq_len(n_v)[-i])])))
+    #This reordering is done for all responses.
+    out[sel] <- n1Wald(dt = rt[sel],
+                       A = A[sel,c(i, seq_len(n_v)[-i])],
+                       B = B[sel,c(i, seq_len(n_v)[-i])],
+                       t0 = t0[sel,c(i, seq_len(n_v)[-i])],
+                       s = s[sel,c(i, seq_len(n_v)[-i])],
+                       v = v[sel,c(i, seq_len(n_v)[-i])],
+                       n_v= n_v)
   }
   return(out)
 }

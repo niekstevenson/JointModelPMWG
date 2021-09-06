@@ -1,8 +1,8 @@
-pmwg_jointParRec <- function(samples, experiments){
+jointParRec <- function(samples, experiments){
   parPreFixs <- gsub("[|].*", "", samples$par_names)
   i <- 0
   jointModelName <- paste(lapply(experiments, function(x){return(x$modelName)}), collapse = "_")
-  medianPars <- pmwg_median(sampled)
+  medianPars <- parMedian(sampled)
   path <- file.path("./data", "ParRec", "joint", jointModelName)
   dir.create(path, recursive = T)
   epsilons <- c(0.3, 0.3, 0.5, 0.5)
@@ -53,10 +53,10 @@ pmwg_jointParRec <- function(samples, experiments){
 }
 
 
-pmwg_parRec <- function(experiments){
+parRec <- function(experiments){
   for (exp in experiments){
     load(paste0("samples/", exp$modelName, ".RData"))
-    medianPars <- pmwg_median(sampled)
+    medianPars <- parMedian(sampled)
     data <- sampled$data
     data <- split(data, data$subject, drop = T)
     df <- data.frame()
@@ -112,8 +112,8 @@ rmse <- function(x, y) {
   sqrt(mean((x-y)^2))
 }
 
-medParsRec <- pmwg_median(sampled)
-medPars <- pmwg_median(sampled)
+medParsRec <- parMedian(sampled)
+medPars <- parMedian(sampled)
 
 par(mfrow = c(3,2))
 for (i in 1:nrow(medPars)){
