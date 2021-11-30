@@ -1,4 +1,3 @@
-Read me Reilly:
 Folders you'll need to make yourself: 
 samples, figures and samples/Joint
 

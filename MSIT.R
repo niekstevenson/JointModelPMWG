@@ -23,6 +23,6 @@ exp <- list("MSIT" = list(name = "MSIT", rtCol = 'rt', subNCol = "subjectNumber"
                                   llFunc = likelihood.RD, priorMean = c(-0.5, rep(0.1, 7)), startpoints = NULL,
                                   modelName = "MSIT_procs")
 )
-exp <- prepDataJoint(exp, splitSess = F, hardCutAcc = T, hardCutN = T) #If splitsess, we can run a joint model comparing session one with session two for the current task.
+exp <- prepDataJoint(exp, splitSess = F, hardCutAcc = T, hardCutN = T, n_sessions = 1) #If splitsess, we can run a joint model comparing session one with session two for the current task.
 debug(runSampler)
 pmwgRun(exp, n_cores = 12)
