@@ -124,11 +124,12 @@ filterSubs <- function(dat, n_trials, accCriterion, slack){
   dat$accuracy[which(is.na(dat$accuracy))] <- F
   for (sub in unique(dat$subject)){
     tmp <- dat[dat$subject == sub,]
+    tmp$accuracy[is.na(tmp$accuracy)] <- 0
     #Filter based on accuracy and number of trials separately
     #Cut them some slack with regards to the number of necessary trials. 
     if(nrow(tmp) < n_trials*(1-slack) | nrow(tmp) > n_trials*(1+slack)) tmp$exclN <- T
     if(is.na(mean(mean(tmp$accuracy, na.rm = T))) | (mean(tmp$accuracy, na.rm = T) < accCriterion)) tmp$exclAcc <- T
-    if(!tmp$exclN) tmp$subject[((n_trials/2)+1):nrow(tmp)] <- tmp$subject + 1000 
+    if(sub == 108) tmp$exclN <- T
     dat[dat$subject == sub,] <- tmp
   }
   dat$excl <- dat$exclN | dat$exclAcc

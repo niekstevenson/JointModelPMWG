@@ -6,7 +6,7 @@ postCheck <- function(experiments, PP = T, n = 25){
     path <- file.path("figures", exp$modelName)
     dir.create(path)
     load(paste0("samples/", exp$modelName, ".RData"))
-    InformationCriterion(sampled, preppedData = exp$preppedData)
+    print(InformationCriterion(sampled, preppedData = exp$preppedData))
     chainPlots(sampled, subjectParPlot = T, parameterPlot = T, subjectLLPlot = T, PDF = T, path = path)
     parIntervals(sampled, PDF = T, path = path)
     parHist(sampled, PDF = T, path = path)

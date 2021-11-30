@@ -164,7 +164,7 @@ dWald <- function(t,v,B,A,s=1,useSuppDists=TRUE)
   out
 }
 
-pWald <- function(t,v,B,A,s=1)
+pWald <- function(t,v,B,A,s=1, useSuppDists = F)
   # cumulative density for single accumulator
 {
   pigt <- function(t,k=1,l=1,a=.1,s=1,tiny=1e-10) {
@@ -208,9 +208,19 @@ pWald <- function(t,v,B,A,s=1)
     x <- numeric(length(t))
     
     # No threshold variability
-    if ( any(atiny) )
-      x[atiny] <- pigt.0(t[atiny],k[atiny],l[atiny],s=s[atiny])
-    
+    if ( any(atiny) ){
+      if(useSuppDists) {
+        nu <- k[atiny]/l[atiny]
+        lambda <- (k[atiny]/s[atiny])^2
+        nu.inf <- is.infinite(nu) | is.na(nu)
+        x[atiny][nu.inf] <- 0
+        x[atiny][!nu.inf] <- pinvGauss(t[atiny][!nu.inf], 
+                                       nu=nu[!nu.inf], 
+                                       lambda=lambda[!nu.inf])
+      } else {
+        x[atiny] <- pigt.0(t=t[atiny],k=k[atiny],l=l[atiny],s=s[atiny])
+      }    
+    }
     # Threshold variability
     if ( any(!atiny) ) {
       
@@ -277,13 +287,14 @@ rWaldRace <- function(n,v,B,A,t0,s)
   v[v < 1e-5] <- 1e-5
   bs <- B + runif(length(B), 0, A)
   n_v  <- ncol(v)
-  ttf <- matrix(NA, nrow=ncol(v), ncol=nrow(v))
+  ttf <- matrix(NA, nrow=n, ncol=ncol(v))
   for(i in 1:n_v) {
-    ttf[i,] <- rinvGauss(n, nu=bs[,i]/v[,i], lambda=(bs[,i]/s[,i])^2)
+    ttf[,i] <- rinvGauss(n, nu=bs[,i]/v[,i], lambda=(bs[,i]/s[,i])^2)
   }
-  ttf <- ttf + t(t0)
-  resp <- apply(ttf, 2, which.min)
-  out <- data.frame(RT = ttf[cbind(resp,1:n)], R = apply(ttf, 2, which.min))
+  ttf <- ttf + t0
+  resp <- apply(ttf, 1, which.min)
+  rt <- apply(ttf, 1, min)
+  out <- data.frame(RT = rt, R = resp)
   return(out)
 }
 

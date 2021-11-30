@@ -1,11 +1,10 @@
-jointParRec <- function(samples, experiments){
+jointParRec <- function(samples, experiments = samples$experiments){
   parPreFixs <- gsub("[|].*", "", samples$par_names)
   i <- 0
   jointModelName <- paste(lapply(experiments, function(x){return(x$modelName)}), collapse = "_")
   medianPars <- parMedian(sampled)
   path <- file.path("./data", "ParRec", "joint", jointModelName)
   dir.create(path, recursive = T)
-  epsilons <- c(0.3, 0.3, 0.5, 0.5)
   for (model in unique(parPreFixs)){
     i <- i + 1
     currentPars <- samples$par_names[which(parPreFixs == model)]
@@ -14,46 +13,40 @@ jointParRec <- function(samples, experiments){
     
     origData <- experiments[[i]]$data
     data <- experiments[[i]]$preppedData
-    RL <- attr(data, "RL")
-    match <- attr(data, "match")
+    settings <- attr(data, "settings")
     data <- split(data, data$subject, drop = T)
     dat <- data.frame()
     for (name in names(data)){
-      pp <- likelihood.RD(pars = currentPars[,name], data = data[[name]], sample = T)
+      pp <- experiments[[i]]$llFunc(pars = currentPars[,name], data = data[[name]], sample = T)
       pp$subject <- name
       dat <- rbind(dat, pp)
     }
     
     factors <- experiments[[i]]$factors
     
-    if(RL){
+    if(settings$RL){
       factors <- c(factors, c("stimulus_set", "ease", "p_win_left", "p_win_right"))
       if(i == 4) factors <- c(factors, 'reversed')
     }
-
+    
     dat[,factors] <- origData[,factors]
-    if(RL){
+    if(settings$RL){
       dat$p_win <- pmax(dat$p_win_left, dat$p_win_right)
       if(i == 4){
         dat$correctTotal[dat$reversed] <- ifelse(dat$R[dat$reversed] == 1, 2, 1)
-        dat$correctTotal[!dat$reversed] <- dat$R
-        dat$rewardTotal[dat$R == 2] <- rbinom(sum(dat$R == 2), 1, dat$p_win[dat$R == 2])
-        dat$rewardTotal[dat$R == 1] <- rbinom(sum(dat$R == 1), 1, 1-dat$p_win[dat$R == 1])
-        dat$reward <- ifelse(dat$reversed, ifelse(dat$rewardTotal == 1, 0, 1), dat$rewardTotal)
-      } else{
-        dat$reward[dat$R == 2] <- rbinom(sum(dat$R == 2), 1, dat$p_win[dat$R == 2])
-        dat$reward[dat$R == 1] <- rbinom(sum(dat$R == 1), 1, 1-dat$p_win[dat$R == 1])
-      }
+        dat$correctTotal[!dat$reversed] <- dat$R[!dat$reversed]
+      } 
+      dat$reward[dat$R == 2] <- rbinom(length(dat$R == 2), 1, dat$p_win[dat$R == 2])
+      dat$reward[dat$R == 1] <- rbinom(length(dat$R == 1), 1, 1-dat$p_win[dat$R == 1])
     }
-    dat[,match[[1]][1]] <- dat$R
+    dat[,settings$match[[1]][1]] <- dat$R
     dat <- dat %>% select(-R)
-    dat <- dat %>% rename(subjectNumber = subject, rt = RT)
-    save(dat, file = paste0(path, "/", experiments[[i]]$modelName, ".RData"))
+    save(dat, file = paste0(path, "/data_", experiments[[i]]$name, ".RData"))
   }
 }
 
 
-parRec <- function(experiments){
+pmwg_parRec <- function(experiments){
   for (exp in experiments){
     load(paste0("samples/", exp$modelName, ".RData"))
     medianPars <- parMedian(sampled)
@@ -112,16 +105,16 @@ rmse <- function(x, y) {
   sqrt(mean((x-y)^2))
 }
 
-medParsRec <- parMedian(sampled)
-medPars <- parMedian(sampled)
-
-par(mfrow = c(3,2))
-for (i in 1:nrow(medPars)){
-  plot(medPars[i,], medParsRec[i,], main = rownames(medPars)[i], xlab = "Data generating", ylab = "Recovered")
-  tmp <- legend('bottomright', c(" ", " "), bty='n', xjust=1, 
-                text.width = strwidth("RMSE = 0.03"))
-  text(tmp$rect$left + tmp$rect$w, tmp$text$y,
-       c(paste0('r = ', round(cor(medPars[i,], medParsRec[i,]), 2)), 
-         paste0('RMSE = ', round(rmse(medPars[i,], medParsRec[i,]), 2))), pos = 2)
-  abline(a=0, b=1)
-}
+# medParsRec <- parMedian(sampled)
+# medPars <- parMedian(sampled)
+# 
+# par(mfrow = c(3,2))
+# for (i in 1:nrow(medPars)){
+#   plot(medPars[i,], medParsRec[i,], main = rownames(medPars)[i], xlab = "Data generating", ylab = "Recovered")
+#   tmp <- legend('bottomright', c(" ", " "), bty='n', xjust=1, 
+#                 text.width = strwidth("RMSE = 0.03"))
+#   text(tmp$rect$left + tmp$rect$w, tmp$text$y,
+#        c(paste0('r = ', round(cor(medPars[i,], medParsRec[i,]), 2)), 
+#          paste0('RMSE = ', round(rmse(medPars[i,], medParsRec[i,]), 2))), pos = 2)
+#   abline(a=0, b=1)
+# }

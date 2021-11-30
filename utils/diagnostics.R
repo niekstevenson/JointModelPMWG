@@ -58,9 +58,6 @@ chainPlots <- function(samples, subjectParPlot = T, parameterPlot = T, subjectLL
 
 parHist <- function(samples, PDF = F, path = NULL, stage = "sample"){
   #Creates a histogram of the posterior distribution per parameter
-  samples$samples$alpha[grep("t0", rownames(samples$samples$alpha)),,] <- pnorm(samples$samples$alpha[grep("t0", rownames(samples$samples$alpha)),,])
-  samples$samples$alpha[grep("aV", rownames(samples$samples$alpha)),,] <- pnorm(samples$samples$alpha[grep("aV", rownames(samples$samples$alpha)),,])
-  
   chains <- as.array(as_mcmc(samples, filter = stage))
   plot <- mcmc_hist(chains)
   if(PDF) pdf(paste0(path, "/parHist.pdf"), onefile = F)
@@ -70,9 +67,6 @@ parHist <- function(samples, PDF = F, path = NULL, stage = "sample"){
 }
 
 parIntervals <- function(samples, PDF = F, path = NULL, stage = "sample"){
-  samples$samples$alpha[grep("t0", rownames(samples$samples$alpha)),,] <- pnorm(samples$samples$alpha[grep("t0", rownames(samples$samples$alpha)),,])
-  samples$samples$alpha[grep("aV", rownames(samples$samples$alpha)),,] <- pnorm(samples$samples$alpha[grep("aV", rownames(samples$samples$alpha)),,])
-  
   #Creates a interval plot of the posterior distribution per parameter
   chains <- as.array(as_mcmc(samples, filter = stage))
   plot <- mcmc_intervals(chains)
@@ -146,37 +140,6 @@ parCovariance <- function(samples, cor = T, plot = T){
 }
 
 
-profilePlot <- function(sampled, n_values = 9, PDF = F, path = NULL){
-  pars <- rowMeans(parMedian(sampled))
-  ll_func <- sampled$ll_func
-  
-  test_data <- ll_func(pars, sampled$data, sample = T)
-  attr(test_data, "settings") <- attr(sampled$data, "settings")
-  sequence <- seq(from = -.22,
-                  to = .22,
-                  length.out = n_values)
-  par(mfrow = c(2,2))
-  if(PDF) pdf(paste0(path, "/profilePlots.pdf"))
-  for(param in names(pars)){
-    testvalues <- sequence + pars[param]
-    tmp <- unlist(lapply(testvalues, function (i){ 
-      #for each test value, it will apply the function where i = testvalue.
-      pars[param] <- i
-      ll_func(pars = pars, data = test_data)
-    }))
-    p <- plot(x = testvalues,
-              y = tmp,
-              type = "b",
-              main = param,
-              xlab = "par values",
-              ylab = "log-likelihood")
-    print(p)
-    abline(v = pars[param], col = "blue")
-  }
-  if(PDF) while (!is.null(dev.list()))  dev.off()
-}
-
-
 
 
 interSesCor <- function(sampled, sampled2 = NULL){
@@ -233,41 +196,9 @@ chainCertainty <- function(samples, cut = 100, path = NULL){
   dev.off()
 }
 
-
 profilePlot <- function(sampled, n_values = 9, PDF = F, path = NULL){
   pars <- rowMeans(parMedian(sampled))
   ll_func <- sampled$ll_func
-  
-  test_data <- ll_func(pars, sampled$data, sample = T)
-  attr(test_data, "settings") <- attr(sampled$data, "settings")
-  sequence <- seq(from = -.22,
-                  to = .22,
-                  length.out = n_values)
-  par(mfrow = c(2,2))
-  if(PDF) pdf(paste0(path, "/profilePlots.pdf"))
-  for(param in names(pars)){
-    testvalues <- sequence + pars[param]
-    tmp <- unlist(lapply(testvalues, function (i){ 
-      #for each test value, it will apply the function where i = testvalue.
-      pars[param] <- i
-      ll_func(pars = pars, data = test_data)
-    }))
-    p <- plot(x = testvalues,
-              y = tmp,
-              type = "b",
-              main = param,
-              xlab = "par values",
-              ylab = "log-likelihood")
-    print(p)
-    abline(v = pars[param], col = "blue")
-  }
-  if(PDF) while (!is.null(dev.list()))  dev.off()
-}
-
-profilePlot <- function(sampled, n_values = 9, PDF = F, path = NULL){
-  pars <- rowMeans(parMedian(sampled))
-  ll_func <- sampled$ll_func
-  
   test_data <- ll_func(pars, sampled$data, sample = T)
   attr(test_data, "settings") <- attr(sampled$data, "settings")
   sequence <- seq(from = -.22,

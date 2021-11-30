@@ -16,15 +16,15 @@ driftsMSIT <- function(pars, data){
     MatchIdx <- data[,'uniq'] == i
     pars[FlIdx,i,'v'] <- pars[FlIdx,i,'v'] + pars[1,1,'vFlank']
     pars[SimIdx,i,'v'] <- pars[SimIdx,i,'v'] + pars[1,1,'vSimon']
+    #pars[SimIdx,i,'B'] <- pars[SimIdx,i,'B'] + pars[1,1,'BSimon']
     for(j in 1:3){
       # We are currently in accumulator i, and we want to give the targets in accumulator i an extra bump based on position
       # So we loop over the three positions, and find for which values, the position == j and give a bump based on that idx
       PosIdx <- data[,'pos'] == j
-      pars[MatchIdx & PosIdx,i,'v'] <- pars[MatchIdx & PosIdx,i, 'v'] + pars[1,1,paste0('vPos.', j)]
+      pars[MatchIdx&PosIdx,i,'v'] <- pars[MatchIdx&PosIdx,i,'v'] + pars[1,1,'vMatch'] + pars[1,1,paste0('vPos.', j)]
     }
     
   }
-  pars[,2,'B'] <- pars[1,1,'B2']
   return(pars)
 }
 
@@ -34,15 +34,16 @@ driftsMSIT2 <- function(pars, data){
     SimIdx <- data[,'pos'] == i #Simon effect
     pars[FlIdx,i,'v'] <- pars[FlIdx,i,'v'] + pars[1,1,'vFlank']
     pars[SimIdx,i,'v'] <- pars[SimIdx,i,'v'] + pars[1,1,'vSimon']
+    pars[SimIdx,i,'B'] <- pars[SimIdx,i,'B'] + pars[1,1,'BSimon']
     for(j in 1:3){
       # We are currently in accumulator i, and we want to give the targets in accumulator i an extra bump based on position
       # So we loop over the three positions, and find for which values, the position == j and give a bump based on that idx
       PosIdx <- data[,'pos'] == j
       #The bump is scaled by the number of stimuli that are presented with (1 + nScale)^(nStims - 1)
-      posBoost <- pars[1,1,paste0('vPos.', j)]*((1 + pars[1,1,'nScale'])^(data[PosIdx,'nstims'] - 1))
+      posBoost <- pars[1,1,paste0('vPos.', j)]
       #Every stim gets the boost, based on numerical distance with exponential decay: distScale^numDist
-      distScale <- (pars[1,1,'distScale']^(abs(data[PosIdx,'uniq']) - i))
-      pars[PosIdx,i,'v'] <- pars[PosIdx,i, 'v'] + (pars[1,1,'vMatch'] + posBoost) * distScale
+      # distScale <- (pars[1,1,'distScale']^(abs(data[PosIdx,'uniq'] - i)))
+      pars[PosIdx,i,'v'] <- pars[PosIdx,i,'v'] + (pars[1,1,'vMatch'] + posBoost) #* distScale
     }
   }
   return(pars)
@@ -68,14 +69,13 @@ driftsRePar <- function(pars, ...){
   v1Pars <- pars[grep("V0_", names(pars), fixed = F)]
   v2Pars <- v1Pars
   diffPars <- pars[grep("diff_", names(pars), fixed = F)]
-  # diffPlusPars <- pars[grep("diffPlus_", names(pars), fixed = F)]
   if(length(diffPars) > 0){
     v1Pars <- v1Pars - diffPars/2
     v2Pars <- v2Pars + diffPars/2
   }
   names(v1Pars) <- paste("v_1_", gsub("^[^_]*_", "", names(v1Pars)), sep = "")
   names(v2Pars) <- paste("v_2_", gsub("^[^_]*_", "", names(v2Pars)), sep = "")
-  pars <- pars[!grepl("V0_", names(pars)) & !grepl("diff_", names(pars)) & !grepl("diffPlus_", names(pars))]
+  pars <- pars[!grepl("V0_", names(pars)) & !grepl("diff_", names(pars))]
   pars <- c(pars, v1Pars, v2Pars)
 }
 
@@ -158,7 +158,8 @@ prepPars <- function(pars, data){
     }
   }
   #Do some transformations
-  pars[,,'t0'] <- pnorm(pars[,,'t0'])
+  #pars[,,'t0'] <- pnorm(pars[,,'t0'])
+  #pars[,,'t0'][pars[,,'t0'] < 1e-5] <- 0 #protect against floating point error
   if(!is.null(transFunc)){
     if(!transFunc$earlyTransform) pars <- transFunc$func(pars, data)
   }
@@ -200,9 +201,11 @@ likelihood.RD <- function(pars,data,min.like=1e-10, sample = F)
 {
   
   facs <- colnames(data)[-which(colnames(data) %in% c("subject", "RT", "R"))]
+  if(!sample){
+    if(any(pars['t0'] > data$rt)) return(-1e5)
+  }
   
   pars <- prepPars(pars, data)
-  
   if (sample){
     #We're interested in posterior prediction, instead of fitting
     n = nrow(data)
@@ -211,6 +214,7 @@ likelihood.RD <- function(pars,data,min.like=1e-10, sample = F)
     colnames(out)[-c(1,2)] <- facs
     return(out)
   } else{
+
     #Get the likelihoods for the sampler
     return(sum(log(pmax(dWaldRace(rt=data$RT, response=data$R,
                                   A=pars[,,'A'], v=pars[,,'v'], B=pars[,,'B'], t0=pars[,,'t0'], st0= 0, s=pars[,,'s'],
@@ -222,9 +226,17 @@ likelihood.ARD <- function(pars,data,min.like=1e-10, sample = F)
 {
   
   facs <- colnames(data)[-which(colnames(data) %in% c("subject", "RT", "R"))]
-  
+  if(!sample){
+    #Protection against bad ranges/values + speed up
+    if(any(pars['t0'] > data$rt)) return(-1e5)
+    if(pars['aV'] < -3.5) return(-1e5)
+    if(pars['aV'] > 3) return(-1e5)
+    if(pars['wD'] < 0) return(-1e5)
+    if(pars['wD'] > 20) return(-1e5)
+    if(pars['wS'] < -10) return(-1e5)
+    if(pars['wS'] > 20) return(-1e5)
+  }
   pars <- prepPars(pars, data)
-  
   if (sample){
     #We're interested in posterior prediction, instead of fitting
     n = nrow(data)

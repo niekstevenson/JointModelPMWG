@@ -262,7 +262,7 @@ pWald <- function(t,v,B,A,s=1)
 }
 
 rARD<- function (n,A,B,t0,Qs,V0,wS,wD,s,st0 = 0, silent = T, simPerTrial = F)  
-  
+  #Win all stopping rule
 {
   n_r <- ncol(Qs) # number of responses
   n_g <- n_r-1          # number in each group mapped to each response
@@ -270,27 +270,21 @@ rARD<- function (n,A,B,t0,Qs,V0,wS,wD,s,st0 = 0, silent = T, simPerTrial = F)
   A[A<0] <- 0
   v <- make.rates(Qs, V0, wS, wD)
   n_v <- ncol(v)
-  if(ncol(v) == 2){
-    #Kluge for now
-    bs <- B + runif(length(B), 0, A)
-    ttf <- matrix(NA, nrow=ncol(v), ncol=nrow(v))
-    for(i in 1:n_v) {
-      ttf[i,] <- rinvGauss(n, nu=bs[,i]/v[,i], lambda=(bs[,i]/s[,i])^2)
+  bs <- B + runif(length(B), 0, A)
+  tmp <- matrix(NA, nrow=n, ncol=n_g)
+  ttf <- matrix(NA, nrow=n, ncol=n_r)
+  for(i in 1:n_r){
+    for(j in 1:n_g){
+      idx <- (i*(n_r-1)) - (n_r - 2)+(j-1)
+      tmp[,j] <- rinvGauss(n, nu=bs[,i]/v[,idx], lambda=(bs[,i]/s[,i])^2)
     }
-    ttf <- ttf + t(t0)
-    resp <- apply(ttf, 2, which.min)
-    out <- data.frame(RT = ttf[cbind(resp,1:n)], R = apply(ttf, 2, which.min))
-    return(out)
-  } else{
-    slowest <- apply(array(rWald(n*n_v,
-                                 B=rep(rep(B,each=n_g),times=n),A=rep(rep(A,each=n_g),times=n),
-                                 v=rep(v,times=n)),
-                           dim=c(n_g,n_r,n)),2:3,max)
-    resp <- apply(slowest,2,which.min)
-    rt <- slowest[cbind(resp,1:n)]
-    data.frame(rt = t0+rt, response = resp)
-    return(out)
+    ttf[,i] <- apply(tmp, 1, max)
   }
+  ttf <- ttf + t0
+  resp <- apply(ttf, 1, which.min)
+  rt <- apply(ttf, 1, min)
+  out <- data.frame(RT = rt, R = apply(ttf, 1, which.min))
+  return(out)
 
 }
 

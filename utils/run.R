@@ -1,27 +1,48 @@
 
-runSampler <- function(sampler, file = NULL, epsilon = 0.5, experiments = NULL){
-  print(paste0("epsilon: ", epsilon))
-  burned <- run_stage(sampler, 
+runSampler <- function(sampler, file = NULL, epsilon = 0.5, pstar = .5, experiments = NULL, n_cores){
+  burned <- run_stage(sampler,
                       stage = "burn",
-                      iter = 5000,
+                      iter = 1000,
+                      useC = F,
                       particles = 100,
-                      n_cores = 15,
-                      epsilon = epsilon
+                      n_cores = n_cores,
+                      pstar = pstar
   )
   save(burned, file = file)
-  adapted <- run_stage(burned, 
-                       stage = "adapt", 
+  burned <- run_stage(burned,
+                      stage = "burn",
+                      iter = 1000,
+                      useC = F,
+                      particles = 100,
+                      n_cores = n_cores,
+                      pstar = pstar
+  )
+  save(burned, file = file)
+  burned <- run_stage(burned,
+                      stage = "burn",
+                      iter = 1500,
+                      useC = T,
+                      particles = 100,
+                      n_cores = n_cores,
+                      pstar = pstar
+  )
+  save(burned, file = file)
+  adapted <- run_stage(adapted,
+                       stage = "adapt",
                        iter = 10000, #Set up quite high, should terminate early anyway if not, likely a problem
                        particles = 100,
-                       n_cores = 15
+                       useC = T,
+                       n_cores = n_cores,
+                       pstar = pstar
   )
   save(adapted, file = file)
-  sampled <- run_stage(adapted, 
+  sampled <- run_stage(sampled, 
                        stage = "sample",
-                       iter = 2000, 
+                       iter = 5000, 
                        particles = 100,
-                       n_cores = 15,
-                       epsilon = epsilon
+                       useC = F,
+                       n_cores = n_cores,
+                       pstar = pstar
   )
   save(sampled, file = file)
   sampled$epsilon = epsilon
@@ -29,7 +50,7 @@ runSampler <- function(sampler, file = NULL, epsilon = 0.5, experiments = NULL){
   save(sampled, file = file)
 }
 
-pmwgRun <- function(experiments, epsilon = NULL){
+pmwgRun <- function(experiments, epsilon = NULL, n_cores){
   for(exp in experiments){
     
     priors <- list(
@@ -44,8 +65,8 @@ pmwgRun <- function(experiments, epsilon = NULL){
       ll_func = exp$llFunc,
       prior = priors
     )
-    sampler = init(sampler, start_mu = exp$startPoints)
-    runSampler(sampler, file = paste0("samples/", exp$modelName, ".RData"), epsilon, experiments = experiments)
+    sampler = init(sampler, start_mu = exp$startPoints, n_cores = n_cores)
+    runSampler(sampler, file = paste0("samples/", exp$modelName, ".RData"), epsilon, pstar = .5, experiments = experiments, n_cores)
   }
 }
 

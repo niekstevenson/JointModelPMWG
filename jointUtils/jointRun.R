@@ -1,31 +1,32 @@
 source("jointUtils/jointPostPredict.R")
 source("jointUtils/jointDiagnostics.R")
 
-pmwgJointRun <- function(experiments, epsilon = NULL, sharedPars = NULL){
+pmwgJointRun <- function(experiments, epsilon = NULL, pstar = NULL, n_factors = NULL, sharedPars = NULL, n_cores = 16){
   #Create a dataframe, with a row for each subject
-  df <- data.frame(subject = as.numeric(levels(unique(experiments[[1]]$preppedData$subject))))
+  subjects <- sapply(experiments, FUN = function(x) return(x$preppedData[,'subject'][[1]])) %>% levels() %>% as.numeric()
+  df <- data.frame(subject = subjects)
   pars <- character()
   priors <- numeric()
   llFuncs <- list()
   modelName <- "Joint"
   startpoints <- NULL
-  #This makes sure that the pars, startpoints and priors for each model in the joint model are still identifiable
   for(exp in experiments){
-    #Add columns to the df that hold 
-    df[exp$modelName] <- I(list(split(exp$preppedData, f = exp$preppedData$subject)))
-    llFuncs[[exp$modelName]] <- exp$llFunc
-    pars <- c(pars, paste(exp$modelName, "|", exp$parNames, sep = ""))
+    currentData <- data.frame(subject = as.numeric(levels(unique(exp$preppedData$subject))))
+    currentData[exp$name] <- I(list(split(exp$preppedData, f = exp$preppedData$subject)))
+    llFuncs[[exp$name]] <- exp$llFunc
+    pars <- c(pars, paste(exp$name, "|", exp$parNames, sep = ""))
     priors <- c(priors, exp$priorMean)
     startpoints <- c(startpoints, exp$startpoints)
     modelName <- paste0(modelName, "_", exp$modelName)
+    df <- base::merge(df, currentData, all = T)
   }
   
   attr(df, 'llFuncs') <- llFuncs
   modelName <- paste0(modelName, "_eps", epsilon)
   for (par in names(sharedPars)){
-    pars <- c(pars, par)
-    priors <- c(priors, sharedPars[[par]]$priors)
-    startpoints <- c(startpoints, sharedPars[[par]]$startpoints)
+    pars <- c(par, pars)
+    priors <- c(sharedPars[[par]]$priors, priors)
+    startpoints <- c(sharedPars[[par]]$startpoints, startpoints)
   }
   priors <- list(
     theta_mu_mean = priors,
@@ -36,12 +37,12 @@ pmwgJointRun <- function(experiments, epsilon = NULL, sharedPars = NULL){
     data = df,
     pars = pars,
     ll_func = jointLL,
-    prior = priors
+    n_factors = n_factors
   )
-  sampler = init(sampler, start_mu = startpoints)
-  path <- paste0("samples/Joint/", modelName, ".RData")
-  if(!is.null(sharedPars)) path <- paste0("samples/Joint/sharedPars/", modelName, ".RData")
-  runSampler(sampler, path, epsilon, experiments = experiments)
+  sampler = init(sampler, start_mu = startpoints, useC = F, n_cores = n_cores)
+  if(!is.null(sharedPars)) modelName <- paste0(modelName, "_sharedt0")
+  path <- paste0("samples/Joint/factor/", n_factors, "/", modelName, ".RData")
+  runSampler(sampler, path, epsilon, experiments = experiments, pstar, n_cores)
 }
 
 jointLL <- function(pars, data){
@@ -57,7 +58,7 @@ jointLL <- function(pars, data){
     names(currentPars) <- gsub(".*[|]", "", names(currentPars))
     currentPars <- c(currentPars, sharedPars)
     modelData <- data[[model]][[1]]
-    if(nrow(modelData) > 0){
+    if(!is.na(modelData)){
       totalSum <- totalSum + llFuncs[[model]](currentPars, modelData)
     }
   }
